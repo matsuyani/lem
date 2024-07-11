@@ -1,4 +1,4 @@
-LISP ?= ${shell which sbcl}
+LISP ?= ros run --
 
 ncurses:
 	qlot install
