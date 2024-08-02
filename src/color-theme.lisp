@@ -160,8 +160,7 @@
     (switch-to-buffer buffer)
     (change-buffer-mode buffer 'color-theme-selector-mode)))
 
-
 (defun initialize-color-theme ()
-  (load-theme (config :color-theme "decaf") nil))
+  (load-theme (config :color-theme "lem-default") nil))
 
 (add-hook *after-init-hook* 'initialize-color-theme)

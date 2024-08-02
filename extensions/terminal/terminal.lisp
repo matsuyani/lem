@@ -1,6 +1,7 @@
 (uiop:define-package :lem-terminal/terminal
   (:use :cl :lem)
-  (:local-nicknames (:ffi :lem-terminal/ffi))
+  (:local-nicknames (:ffi :lem-terminal/ffi)
+                    (:queue :lem/common/queue))
   (:export :find-terminal-buffer
            :create
            :destroy
@@ -63,16 +64,20 @@
 
 (defun create (&key (rows (alexandria:required-argument :rows))
                     (cols (alexandria:required-argument :cols))
-                    (buffer (alexandria:required-argument :buffer)))
+                    (buffer (alexandria:required-argument :buffer))
+                    (directory (alexandria:required-argument :directory)))
+  (declare (type (string) directory)
+           (type (integer) rows)
+           (type (integer) cols))
   (let* ((id (generate-terminal-id))
          (terminal
            (make-instance 'terminal
                           :id id
-                          :viscus (ffi::terminal-new id rows cols)
+                          :viscus (ffi::terminal-new directory id rows cols)
                           :buffer buffer
                           :rows rows
                           :cols cols)))
-    (let ((queue (lem/common/queue:make-concurrent-queue)))
+    (let ((queue (queue:make-concurrent-queue)))
       (setf (terminal-thread terminal)
             (bt2:make-thread
              (lambda ()
@@ -82,8 +87,8 @@
                   (lambda ()
                     ;; XXX: If this place is executed at the time the terminal is deleted, an error will occur.
                     (ignore-errors (update terminal))
-                    (lem/common/queue:enqueue queue 1)))
-                 (lem/common/queue:dequeue queue)))
+                    (queue:enqueue queue 1)))
+                 (queue:dequeue queue)))
              :name (format nil "Terminal ~D" id))))
     (add-terminal terminal)
     terminal))
