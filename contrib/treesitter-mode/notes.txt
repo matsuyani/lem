@@ -1,0 +1,11 @@
+# copied from nvim-treesitter/parsers.lua
+
+... there are a ton of these
+list.c_sharp = {
+  install_info = {
+    url = "https://github.com/tree-sitter/tree-sitter-c-sharp",
+    files = { "src/parser.c", "src/scanner.c" },
+  },
+  filetype = "cs",
+  maintainers = { "@Luxed" },
+}
