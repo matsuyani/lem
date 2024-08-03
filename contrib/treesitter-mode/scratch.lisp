@@ -1,7 +1,8 @@
-(defpackage #:lem-treesitter-mode
-  (:use :cl :lem :cl-treesitter))
+; (defpackage #:lem-treesitter-mode
+;   (:use :cl :lem :cl-treesitter))
 
 (ql:quickload :alexandria)
+(ql:quickload :cl-treesitter)
 
 
 
@@ -33,7 +34,7 @@
 (ensure-directories-exist *lem-cache-dir* :verbose t :mode 755)
 
 (defvar *lem-treesitter-library* (uiop:merge-pathnames* *lem-cache-dir* "treesitter/compiled"))
-(defvar *lem-treesitter-source (uiop:merge-pathnames* *lem-cache-dir* "treesitter/src"))
+(defvar *lem-treesitter-source* (uiop:merge-pathnames* *lem-cache-dir* "treesitter/src"))
 
 (defparameter *treesitter-locs*
 '(:c_sharp
@@ -56,27 +57,33 @@
 (get-ts-repo (getf *treesitter-locs* :c_sharp))
 (get-ts-files (getf *treesitter-locs* :c_sharp))
 
-(defmacro pushd (directory &body body)
-  (let ((current-directory 
-  (unwind-protect (progn ,@body)
-    (
-  )
-
 (string-downcase (symbol-name :c_sharp))
 (defun fetch-source (lang)
   "Fetches the source files for a particular ts-loc
      TODO: typecheck lang, needs to be a keyword symbol
      TODO: throw if we don't get a lang-spec successfully?
      TODO: make this thread safe? see uiop:with-current-directory
+     TODO: make output stream somehow, to show in a lem status bar?
+     TODO: actually get repo name somehow
 "
   (let* ((lang-str (string-downcase (symbol-name lang)))
          (lang-spec (getf *treesitter-locs* lang))
          (repo (getf (getf lang-spec :install_info) :url))
-         (files (getf (getf lang-spec :install_info) :repo))
-         (tmpdir (make-temporary-directory)))
-    (uiop:with-current-directory ("/tmp/lem-treesitter")
-      )
-  ))
+         (files (getf (getf lang-spec :install_info) :files))
+         (tmpdir (make-temporary-directory))
+         (lang-ts-src-dir (make-pathname :directory (append (pathname-directory *lem-treesitter-source*)
+                                                            (list lang-str))))
+         (lang-ts-src-dir-str (format nil "/~{~A~^/~}" (cdr (pathname-directory lang-ts-src-dir))))
+         (repo-name "tree-sitter-c-sharp"))
+    (ensure-directories-exist lang-ts-src-dir :verbose t)
+    (uiop:with-current-directory ((make-temporary-directory))
+      ;(uiop:run-program `("git" "clone" ,repo) :output t)
+      (uiop:with-current-directory (repo-name)
+        (uiop:run-program `("cp" "-v" ,@files ,lang-ts-src-dir-str) :output t)
+      
+  ))))
+
+(fetch-source :c_sharp)
 
 (uiop:with-current-directory ((make-temporary-directory))
   (uiop:run-program "ls" :output t))
