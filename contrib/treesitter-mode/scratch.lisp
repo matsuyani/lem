@@ -63,8 +63,9 @@
      TODO: typecheck lang, needs to be a keyword symbol
      TODO: throw if we don't get a lang-spec successfully?
      TODO: make this thread safe? see uiop:with-current-directory
-     TODO: make output stream somehow, to show in a lem status bar?
+     TODO: make output stream somehow, to show in a lem status bar? or something?
      TODO: actually get repo name somehow
+     TODO: handle instance where dir already exists?
 "
   (let* ((lang-str (string-downcase (symbol-name lang)))
          (lang-spec (getf *treesitter-locs* lang))
@@ -77,7 +78,7 @@
          (repo-name "tree-sitter-c-sharp"))
     (ensure-directories-exist lang-ts-src-dir :verbose t)
     (uiop:with-current-directory ((make-temporary-directory))
-      ;(uiop:run-program `("git" "clone" ,repo) :output t)
+      ; (uiop:run-program `("git" "clone" ,repo) :output t)
       (uiop:with-current-directory (repo-name)
         (uiop:run-program `("cp" "-v" ,@files ,lang-ts-src-dir-str) :output t)
       
