@@ -3,7 +3,14 @@
 
 (ql:quickload :alexandria)
 (ql:quickload :cl-treesitter)
+(ql:quickload :cffi-toolchain)
+(ql:quickload :filesystem-utils)
 
+;; (defmethod asdf:perform ((op asdf:compile-op) (obj c-source-file))
+;;   (with-slots ((name asdf/component:absolute-pathname)) obj
+;;     (cffi-toolchain:link-shared-library
+;;      (format nil "~a.so" name)
+;;      (list (format nil "~a.c" name)))))
 
 
 ; 1. Loading a treesitter
@@ -24,7 +31,7 @@
 ; endfunction
 
 
-  ; (:export))
+; (:export))
 
 
 (in-package :lem-user)
@@ -33,15 +40,33 @@
 (setf *lem-cache-dir* (uiop:parse-native-namestring (uiop:native-namestring "~/.local/share/lem") :ensure-directory t))
 (ensure-directories-exist *lem-cache-dir* :verbose t :mode 755)
 
-(defvar *lem-treesitter-library* (uiop:merge-pathnames* *lem-cache-dir* "treesitter/compiled"))
-(defvar *lem-treesitter-source* (uiop:merge-pathnames* *lem-cache-dir* "treesitter/src"))
+(defun join-directory (base-directory-pathname &rest sub-directory-path)
+  (make-pathname :directory (append (pathname-directory base-directory-pathname)
+                                    sub-directory-path)))
+
+(defvar *lem-treesitter-library* (join-directory *lem-cache-dir* "treesitter" "compiled"))
+(defvar *lem-treesitter-source* (join-directory *lem-cache-dir* "treesitter" "src"))
+
 
 (defparameter *treesitter-locs*
-'(:c_sharp
-      (:install_info (:url "https://github.com/tree-sitter/tree-sitter-c-sharp"
-                      :files ("src/parser.c" "src/scanner.c"))
-            :filetype "cs"
-            :maintainers ("@Luxed"))))
+  '(:c_sharp
+    (:install_info (:url "https://github.com/tree-sitter/tree-sitter-c-sharp"
+                    :files ("src/parser.c" "src/scanner.c"))
+     :filetype "cs"
+     :maintainers ("@Luxed"))
+    :c
+    (:install_info (:url "https://github.com/tree-sitter/tree-sitter-c"
+                    :files ("src/parser.c"))
+     :maintainers ("@amaanq"))
+    :rust
+    (:install_info (:url "https://github.com/tree-sitter/tree-sitter-c"
+                    :files ("src/parser.c"))
+     :maintainers ("@amaanq"))
+    :bash
+    (:install_info (:url "https://github.com/tree-sitter/tree-sitter-bash"
+                    :files ("src/parser.c" "src/scanner.c"))
+     :filetype "sh"
+     :maintainers ("@TravonteD"))))
 
 (defun make-temporary-directory ()
   (let ((tmpdir (make-pathname :directory (append (pathname-directory (uiop:temporary-directory)) 
@@ -54,42 +79,114 @@
 (defun get-ts-files (ts-loc)
   (getf (getf ts-loc :install_info) :files))
 
-(get-ts-repo (getf *treesitter-locs* :c_sharp))
-(get-ts-files (getf *treesitter-locs* :c_sharp))
-
-(string-downcase (symbol-name :c_sharp))
-(defun fetch-source (lang)
+(defun fetch-source (lang local-repo-path)
   "Fetches the source files for a particular ts-loc
-     TODO: typecheck lang, needs to be a keyword symbol
-     TODO: throw if we don't get a lang-spec successfully?
-     TODO: make this thread safe? see uiop:with-current-directory
-     TODO: make output stream somehow, to show in a lem status bar? or something?
-     TODO: actually get repo name somehow
-     TODO: handle instance where dir already exists?
+     TODO:
+     [ ]: typecheck lang, needs to be a keyword symbol
+     [ ]: throw if we don't get a lang-spec successfully?
+     [ ]: make this thread safe? see uiop:with-current-directory
+     [ ]: make output stream somehow, to show in a lem status bar? or something?
+     [x]: actually get repo name somehow [Decided to clone to lang-str]
+     [x]: handle instance where dir already exists? [see download-source]
+     [x]: cross-platform copy of source files [see copy-to-dir]
+     [ ]: get source tarball and extract instead of cloning?
+
+     Returns the relative path to the source repository.
 "
+  (let* ((lang-spec (getf *treesitter-locs* lang))
+         (repo (getf (getf lang-spec :install_info) :url)))
+    (if (uiop:directory-exists-p local-repo-path)
+        (format t "Directory ~a already exists. Refusing to clone.~%" local-repo-path)
+        (uiop:run-program `("git" "clone" ,repo ,local-repo-path) :error-output t :output t))
+    local-repo-path))
+
+(defun compile-lang (lang)
+  "compiles treesitter language object and copies it to *lem-treesitter-library*"
   (let* ((lang-str (string-downcase (symbol-name lang)))
          (lang-spec (getf *treesitter-locs* lang))
-         (repo (getf (getf lang-spec :install_info) :url))
-         (files (getf (getf lang-spec :install_info) :files))
-         (tmpdir (make-temporary-directory))
-         (lang-ts-src-dir (make-pathname :directory (append (pathname-directory *lem-treesitter-source*)
-                                                            (list lang-str))))
-         (lang-ts-src-dir-str (format nil "/~{~A~^/~}" (cdr (pathname-directory lang-ts-src-dir))))
-         (repo-name "tree-sitter-c-sharp"))
-    (ensure-directories-exist lang-ts-src-dir :verbose t)
+         (input-files (getf (getf lang-spec :install_info) :files))
+         (output-file (uiop:merge-pathnames* *lem-treesitter-library* 
+                                             (format nil "libtree-sitter-~a.so" lang-str))))
+    (format t "~a -> ~a~%" input-files output-file)
+    (cffi-toolchain:link-shared-library output-file input-files)))
+
+(defun install-lang (lang)
+  "Attempts to fetch and install the treesitter for a particular language"
+  (let ((repo-name (string-downcase (symbol-name lang))))
     (uiop:with-current-directory ((make-temporary-directory))
-      ; (uiop:run-program `("git" "clone" ,repo) :output t)
+      (fetch-source lang repo-name)
       (uiop:with-current-directory (repo-name)
-        (uiop:run-program `("cp" "-v" ,@files ,lang-ts-src-dir-str) :output t)
-      
-  ))))
+        (compile-lang lang)))))
 
-(fetch-source :c_sharp)
+(defun ts-installed-p (lang)
+  "Checks if a treesitter language object exists in *lem-treesitter-library*"
+  (let* ((lang-str (string-downcase (symbol-name lang)))
+         (lang-so-name (format nil "libtree-sitter-~a.so" lang-str))
+         (lang-so-filepath (uiop:merge-pathnames* *lem-treesitter-library* lang-so-name)))
+    (uiop:file-exists-p lang-so-filepath)))
 
-(uiop:with-current-directory ((make-temporary-directory))
-  (uiop:run-program "ls" :output t))
+(defun ensure-language-treesitter-installed (lang)
+  "Determines if the treesitter library for the given language is installed. Installs it if it is not found."
+  (unless (ts-installed-p lang)
+    (install-lang lang)))
+
+(defvar *tree-sitters* (make-hash-table :test #'equal))
+
+;; (defun load-tree-sitter (lang &key (ensure-installed t))
+;;   (let ((lang-str (string-downcase (symbol-name lang))))
+;;     (when ensure-installed
+;;       (ensure-language-treesitter-installed lang))
+;;     (treesitter:include-language lang-str :search-path *lem-treesitter-library*)))
+
+(defmacro load-tree-sitter (lang &key (ensure-installed t))
+  (let ((lang-str (string-downcase (symbol-name lang))))
+    `(progn
+      (when ,ensure-installed
+        (ensure-language-treesitter-installed ,lang))
+      (treesitter:include-language ,lang-str :search-path *lem-treesitter-library*)
+      (setf (gethash ,lang *tree-sitters*) (treesitter:make-language ,lang-str)))))
+
+(load-tree-sitter :c_sharp)
+
+(let ((parser (treesitter:make-parser :language (gethash :c_sharp *tree-sitters*))))
+  (treesitter:node-string
+   (treesitter:tree-root-node
+    (treesitter:parser-parse-string parser "int foo() {return 0;}"))))
 
 
+(load-tree-sitter :c)
+(load-tree-sitter :rust)
+(load-tree-sitter :bash)
+
+
+;; (defmacro include-language (lang &key search-path)
+;;   "Convenience macro to load treesitter language objects.
+;; Interns a function named `tree-sitter-*` that creates a language."
+;;   (let ((fn-symbol (intern (format nil "~:@(tree-sitter-~a~)" lang) :treesitter)))
+;;     `(progn
+;;        (cffi:load-foreign-library ,(format nil "libtree-sitter-~(~a~).so" lang)
+;;                                   :search-path (or ,search-path *language-path*))
+;;        (cffi:defcfun (,(format nil "tree_sitter_~(~a~)" lang) ,fn-symbol) :pointer)
+;;        (setf (gethash ,lang *languages*) (quote ,fn-symbol)))))
+
+; (load-tree-sitter :c)
+  ;(if (uiop:file-exists-p (uiop:merge-pathnames* *lem-treesitter-library*
+  ;                                               (format nil "libtree-sitter-~a.so" 
+
+; (fetch-source :c_sharp)
+; (compile-lang :c_sharp)
+
+;; (install-lang :rust)
+;; (install-lang :c)
+
+;; (treesitter:include-language "c_sharp" :search-path *lem-treesitter-library*)
+;; (treesitter:include-language "rus" :search-path *lem-treesitter-library*)
+;; (defvar *c_sharp-lang* (treesitter:make-language "c_sharp"))
+
+;; (let ((parser (treesitter:make-parser :language *c_sharp-lang*)))
+;;   (treesitter:node-string
+;;    (treesitter:tree-root-node
+;;     (treesitter:parser-parse-string parser "int foo() {return 0;}"))))
 
 ; "~/.local/share/lem/treesitter/compiled/"
 ; "~/.local/share/lem/treesitter/src/<lang>" ; e.g. c_sharp
