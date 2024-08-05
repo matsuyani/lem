@@ -37,15 +37,14 @@
 (in-package :lem-user)
 
 (defvar *lem-cache-dir* (uiop:parse-native-namestring (uiop:native-namestring "~/.local/share/lem") :ensure-directory t))
-(setf *lem-cache-dir* (uiop:parse-native-namestring (uiop:native-namestring "~/.local/share/lem") :ensure-directory t))
-(ensure-directories-exist *lem-cache-dir* :verbose t :mode 755)
+(ensure-directories-exist *lem-cache-dir* :verbose t :mode #o755)
 
 (defun join-directory (base-directory-pathname &rest sub-directory-path)
   (make-pathname :directory (append (pathname-directory base-directory-pathname)
                                     sub-directory-path)))
 
 (defvar *lem-treesitter-library* (join-directory *lem-cache-dir* "treesitter" "compiled"))
-(defvar *lem-treesitter-source* (join-directory *lem-cache-dir* "treesitter" "src"))
+(ensure-directories-exist *lem-treesitter-library* :verbose t :mode #o755)
 
 
 (defparameter *treesitter-locs*
@@ -59,8 +58,8 @@
                     :files ("src/parser.c"))
      :maintainers ("@amaanq"))
     :rust
-    (:install_info (:url "https://github.com/tree-sitter/tree-sitter-c"
-                    :files ("src/parser.c"))
+    (:install_info (:url "https://github.com/tree-sitter/tree-sitter-rust"
+                    :files ("src/parser.c" "src/scanner.c"))
      :maintainers ("@amaanq"))
     :bash
     (:install_info (:url "https://github.com/tree-sitter/tree-sitter-bash"
@@ -71,7 +70,7 @@
 (defun make-temporary-directory ()
   (let ((tmpdir (make-pathname :directory (append (pathname-directory (uiop:temporary-directory)) 
                                                   '("lem-treesitter")))))
-    (ensure-directories-exist tmpdir :verbose t :mode 755)))
+    (ensure-directories-exist tmpdir :verbose t :mode #o755)))
 
 (defun get-ts-repo (ts-loc)
   (getf (getf ts-loc :install_info) :url))
@@ -132,12 +131,6 @@
 
 (defvar *tree-sitters* (make-hash-table :test #'equal))
 
-;; (defun load-tree-sitter (lang &key (ensure-installed t))
-;;   (let ((lang-str (string-downcase (symbol-name lang))))
-;;     (when ensure-installed
-;;       (ensure-language-treesitter-installed lang))
-;;     (treesitter:include-language lang-str :search-path *lem-treesitter-library*)))
-
 (defmacro load-tree-sitter (lang &key (ensure-installed t))
   (let ((lang-str (string-downcase (symbol-name lang))))
     `(progn
@@ -154,41 +147,7 @@
     (treesitter:parser-parse-string parser "int foo() {return 0;}"))))
 
 
-(load-tree-sitter :c)
-(load-tree-sitter :rust)
-(load-tree-sitter :bash)
-
-
-;; (defmacro include-language (lang &key search-path)
-;;   "Convenience macro to load treesitter language objects.
-;; Interns a function named `tree-sitter-*` that creates a language."
-;;   (let ((fn-symbol (intern (format nil "~:@(tree-sitter-~a~)" lang) :treesitter)))
-;;     `(progn
-;;        (cffi:load-foreign-library ,(format nil "libtree-sitter-~(~a~).so" lang)
-;;                                   :search-path (or ,search-path *language-path*))
-;;        (cffi:defcfun (,(format nil "tree_sitter_~(~a~)" lang) ,fn-symbol) :pointer)
-;;        (setf (gethash ,lang *languages*) (quote ,fn-symbol)))))
-
+; these will also work:
 ; (load-tree-sitter :c)
-  ;(if (uiop:file-exists-p (uiop:merge-pathnames* *lem-treesitter-library*
-  ;                                               (format nil "libtree-sitter-~a.so" 
-
-; (fetch-source :c_sharp)
-; (compile-lang :c_sharp)
-
-;; (install-lang :rust)
-;; (install-lang :c)
-
-;; (treesitter:include-language "c_sharp" :search-path *lem-treesitter-library*)
-;; (treesitter:include-language "rus" :search-path *lem-treesitter-library*)
-;; (defvar *c_sharp-lang* (treesitter:make-language "c_sharp"))
-
-;; (let ((parser (treesitter:make-parser :language *c_sharp-lang*)))
-;;   (treesitter:node-string
-;;    (treesitter:tree-root-node
-;;     (treesitter:parser-parse-string parser "int foo() {return 0;}"))))
-
-; "~/.local/share/lem/treesitter/compiled/"
-; "~/.local/share/lem/treesitter/src/<lang>" ; e.g. c_sharp
-;(uiop:run-program '("echo" "foo" "bar") :output t)
-; (uiop:run-program '("echo" "foo" "bar") :output t)
+; (load-tree-sitter :rust)
+; (load-tree-sitter :bash)
