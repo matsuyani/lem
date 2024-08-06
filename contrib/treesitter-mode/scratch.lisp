@@ -1,10 +1,13 @@
-; (defpackage #:lem-treesitter-mode
-;   (:use :cl :lem :cl-treesitter))
+;(defpackage #:lem-treesitter-mode
+;  (:use :cl :lem :cl-treesitter :cffi-toolchain))
+; conflicts with POINT and CURSOR
+(defpackage :lem-treesitter-mode
+  (:use :cl :lem)
+  (:export))
 
-(ql:quickload :alexandria)
-(ql:quickload :cl-treesitter)
-(ql:quickload :cffi-toolchain)
-(ql:quickload :filesystem-utils)
+(in-package :lem-treesitter-mode)
+; there has to be a better way?
+(asdf:load-system :cl-treesitter)
 
 ;; (defmethod asdf:perform ((op asdf:compile-op) (obj c-source-file))
 ;;   (with-slots ((name asdf/component:absolute-pathname)) obj
@@ -32,9 +35,6 @@
 
 
 ; (:export))
-
-
-(in-package :lem-user)
 
 (defvar *lem-cache-dir* (uiop:parse-native-namestring (uiop:native-namestring "~/.local/share/lem") :ensure-directory t))
 (ensure-directories-exist *lem-cache-dir* :verbose t :mode #o755)
@@ -131,6 +131,9 @@
 
 (defvar *tree-sitters* (make-hash-table :test #'equal))
 
+; This needs to be a macro, otherwise
+; (treesitter:include-language lang-str ...) will try and load a library named "libtree-sitter-lang-str.so"
+; so, I think I understand why it's like this
 (defmacro load-tree-sitter (lang &key (ensure-installed t))
   (let ((lang-str (string-downcase (symbol-name lang))))
     `(progn
@@ -139,12 +142,12 @@
       (treesitter:include-language ,lang-str :search-path *lem-treesitter-library*)
       (setf (gethash ,lang *tree-sitters*) (treesitter:make-language ,lang-str)))))
 
-(load-tree-sitter :c_sharp)
-
-(let ((parser (treesitter:make-parser :language (gethash :c_sharp *tree-sitters*))))
-  (treesitter:node-string
-   (treesitter:tree-root-node
-    (treesitter:parser-parse-string parser "int foo() {return 0;}"))))
+;(load-tree-sitter :c_sharp)
+;
+;(let ((parser (treesitter:make-parser :language (gethash :c_sharp *tree-sitters*))))
+;  (treesitter:node-string
+;   (treesitter:tree-root-node
+;    (treesitter:parser-parse-string parser "int foo() {return 0;}"))))
 
 
 ; these will also work:
