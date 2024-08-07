@@ -1,30 +1,19 @@
-;(defpackage #:lem-treesitter-mode
-;  (:use :cl :lem :cl-treesitter :cffi-toolchain))
-; conflicts with POINT and CURSOR
 (defpackage :lem-treesitter-mode
-  (:use :cl :lem)
-  (:export))
+  (:use :cl :lem :treesitter)
+  (:shadow #:point #:cursor)
+  (:export
+   #:load-treesitter))
 
 (in-package :lem-treesitter-mode)
-; there has to be a better way?
-(asdf:load-system :cl-treesitter)
-
-;; (defmethod asdf:perform ((op asdf:compile-op) (obj c-source-file))
-;;   (with-slots ((name asdf/component:absolute-pathname)) obj
-;;     (cffi-toolchain:link-shared-library
-;;      (format nil "~a.so" name)
-;;      (list (format nil "~a.c" name)))))
-
-
 ; 1. Loading a treesitter
 ;   - fetching & compiling a treesitter lib if it's not found locally
 ;   - loading a treesitter lib from a particular directory (lem cache?)
 ;     - do this on-demand when we enter a particular dir?
-
+; 
 ; How does neovim do this?
 ; - mason (no, this is for LSPs)
 ; - nvim-treesitter
-
+; 
 ; function! nvim_treesitter#installable_parsers(arglead, cmdline, cursorpos) abort
 ; return join(luaeval("require'nvim-treesitter.parsers'.available_parsers()") + ['all'], "\n")
 ; endfunction
@@ -32,8 +21,8 @@
 ; function! nvim_treesitter#installed_parsers(arglead, cmdline, cursorpos) abort
 ; return join(luaeval("require'nvim-treesitter.info'.installed_parsers()") + ['all'], "\n")
 ; endfunction
-
-
+; 
+; 
 ; (:export))
 
 (defvar *lem-cache-dir* (uiop:parse-native-namestring (uiop:native-namestring "~/.local/share/lem") :ensure-directory t))
@@ -134,7 +123,7 @@
 ; This needs to be a macro, otherwise
 ; (treesitter:include-language lang-str ...) will try and load a library named "libtree-sitter-lang-str.so"
 ; so, I think I understand why it's like this
-(defmacro load-tree-sitter (lang &key (ensure-installed t))
+(defmacro load-treesitter (lang &key (ensure-installed t))
   (let ((lang-str (string-downcase (symbol-name lang))))
     `(progn
       (when ,ensure-installed

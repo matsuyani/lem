@@ -1,4 +1,4 @@
 (defsystem "lem-treesitter-mode"
-  :serial t
-  :depends-on ("lem" "cl-treesitter" "cffi-toolchain")
+  ;:depends-on ("lem" "cl-treesitter" "cffi-toolchain")
+  :depends-on ("cl-treesitter" "cffi-toolchain")
   :components ((:file "scratch")))
