@@ -1,9 +1,11 @@
 (defpackage :lem-treesitter-mode
-  (:use :cl :lem :treesitter)
-  (:shadow #:point #:cursor)
+  (:use :cl :lem)
+  ; (:shadow #:point #:cursor)
   (:export
    #:load-treesitter))
 
+; (defpackage :lem-treesitter-mode
+;   (:use :cl :lem))
 (in-package :lem-treesitter-mode)
 ; 1. Loading a treesitter
 ;   - fetching & compiling a treesitter lib if it's not found locally
@@ -26,11 +28,20 @@
 ; (:export))
 
 (defvar *lem-cache-dir* (uiop:parse-native-namestring (uiop:native-namestring "~/.local/share/lem") :ensure-directory t))
+
 (ensure-directories-exist *lem-cache-dir* :verbose t :mode #o755)
 
 (defun join-directory (base-directory-pathname &rest sub-directory-path)
   (make-pathname :directory (append (pathname-directory base-directory-pathname)
                                     sub-directory-path)))
+
+(defun join-pathnames (base-pathname adjoining-pathname)
+  (let* ((adjoining-directory (rest (pathname-directory adjoining-pathname)))
+         (adjoining-file (pathname-name adjoining-pathname))
+         (adjoining-type (pathname-type adjoining-pathname)))
+    (make-pathname :directory (append (pathname-directory base-pathname) adjoining-directory)
+                   :name adjoining-file
+                   :type adjoining-type)))
 
 (defvar *lem-treesitter-library* (join-directory *lem-cache-dir* "treesitter" "compiled"))
 (ensure-directories-exist *lem-treesitter-library* :verbose t :mode #o755)
@@ -67,12 +78,12 @@
 (defun get-ts-files (ts-loc)
   (getf (getf ts-loc :install_info) :files))
 
-(defun fetch-source (lang local-repo-path)
+(defun fetch-source (lang cache-pathname)
   "Fetches the source files for a particular ts-loc
      TODO:
      [ ]: typecheck lang, needs to be a keyword symbol
      [ ]: throw if we don't get a lang-spec successfully?
-     [ ]: make this thread safe? see uiop:with-current-directory
+     [x]: make this thread safe? see uiop:with-current-directory [refactored to not use uiop:with-current-directory]
      [ ]: make output stream somehow, to show in a lem status bar? or something?
      [x]: actually get repo name somehow [Decided to clone to lang-str]
      [x]: handle instance where dir already exists? [see download-source]
@@ -82,29 +93,36 @@
      Returns the relative path to the source repository.
 "
   (let* ((lang-spec (getf *treesitter-locs* lang))
-         (repo (getf (getf lang-spec :install_info) :url)))
-    (if (uiop:directory-exists-p local-repo-path)
-        (format t "Directory ~a already exists. Refusing to clone.~%" local-repo-path)
-        (uiop:run-program `("git" "clone" ,repo ,local-repo-path) :error-output t :output t))
-    local-repo-path))
+         (lang-str (string-downcase (symbol-name lang)))
+         (repo (getf (getf lang-spec :install_info) :url))
+         (local-repo-pathname (join-directory cache-pathname lang-str))
+         (local-repo-namestring (pathname-utils:native-namestring local-repo-pathname)))
+    (if (uiop:directory-exists-p local-repo-pathname)
+        (format t "Directory ~a already exists. Refusing to clone.~%" local-repo-pathname)
+        (uiop:run-program `("git" "clone" ,repo ,local-repo-namestring) :error-output t :output t))
+    local-repo-pathname))
 
-(defun compile-lang (lang)
+(defun compile-lang (lang cache-pathname)
   "compiles treesitter language object and copies it to *lem-treesitter-library*"
   (let* ((lang-str (string-downcase (symbol-name lang)))
          (lang-spec (getf *treesitter-locs* lang))
+         (local-repo-pathname (join-directory cache-pathname lang-str))
          (input-files (getf (getf lang-spec :install_info) :files))
          (output-file (uiop:merge-pathnames* *lem-treesitter-library* 
-                                             (format nil "libtree-sitter-~a.so" lang-str))))
-    (format t "~a -> ~a~%" input-files output-file)
-    (cffi-toolchain:link-shared-library output-file input-files)))
+                                             (format nil "libtree-sitter-~a.so" lang-str)))
+         (input-files-absolute (mapcar (lambda (file) 
+                                         (join-pathnames local-repo-pathname 
+                                                         (uiop:parse-native-namestring file)))
+                                       input-files)))
+    (format t "~a -> ~a~%" input-files-absolute output-file)
+    (cffi-toolchain:link-shared-library output-file input-files-absolute)))
 
 (defun install-lang (lang)
   "Attempts to fetch and install the treesitter for a particular language"
-  (let ((repo-name (string-downcase (symbol-name lang))))
-    (uiop:with-current-directory ((make-temporary-directory))
-      (fetch-source lang repo-name)
-      (uiop:with-current-directory (repo-name)
-        (compile-lang lang)))))
+  (let* ((tmpdir (make-temporary-directory))) 
+    (fetch-source lang tmpdir)
+    (compile-lang lang tmpdir)))
+
 
 (defun ts-installed-p (lang)
   "Checks if a treesitter language object exists in *lem-treesitter-library*"
@@ -132,7 +150,7 @@
       (setf (gethash ,lang *tree-sitters*) (treesitter:make-language ,lang-str)))))
 
 ;(load-tree-sitter :c_sharp)
-;
+
 ;(let ((parser (treesitter:make-parser :language (gethash :c_sharp *tree-sitters*))))
 ;  (treesitter:node-string
 ;   (treesitter:tree-root-node
